@@ -1070,12 +1070,19 @@ window.__ModuleLoader__.load({
     // ---------------------------------------------------------------------
     // Panel: fetch, poll while the Host scans, then render the body.
     // ---------------------------------------------------------------------
+    /**
+     * Stand-in for a slot that does not provide the sessions selector hook
+     * (older clients): a stable function, so the hook count never changes.
+     */
+    const NO_SESSIONS = selector => selector({ byId: {} })
+
     function Panel(props) {
       const t = props.t
       const uiState = useUi()
       // Same session store the sidebar renders: it carries `displayTitle` for
       // every listed conversation, which the picker needs before any scan.
-      const summaries = props.useSessions(state => state.byId)
+      const useSessions = typeof props.useSessions === 'function' ? props.useSessions : NO_SESSIONS
+      const summaries = useSessions(state => state.byId)
       const [data, setData] = useState(null)
       const [error, setError] = useState(null)
       const [scanning, setScanning] = useState(false)
