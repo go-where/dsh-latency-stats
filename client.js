@@ -49,9 +49,13 @@ window.__ModuleLoader__.load({
         'models.hiddenNote': '已隐藏 {n} 个模型',
         'cache.session': '会话',
         'cache.subagent': '子代理',
-        'cache.avg': '平均命中',
+        'cache.avg': '平均缓存命中',
         'cache.pooled': '按 token 加权',
-        'cache.points': '个采样步',
+        'cache.points': '采样步',
+        'cache.ttft': '首 token 平均 (TTFT)',
+        'cache.tps': '输出速度 (TPS)',
+        'cache.tpsNote': '与 DSH 会话统计同口径：输出 tokens ÷ 解码耗时',
+        'cache.hoverHint': '悬停曲线查看单次响应',
         'cache.empty': '这个会话还没有带用量记录的步骤。',
         'cache.loading': '正在读取会话…',
         'cache.legend': '缓存读取 tokens ÷ 上下文 tokens（输入 + 缓存读 + 缓存写）',
@@ -136,9 +140,13 @@ window.__ModuleLoader__.load({
         'models.hiddenNote': '{n} models hidden',
         'cache.session': 'Session',
         'cache.subagent': 'subagent',
-        'cache.avg': 'Avg hit',
+        'cache.avg': 'Avg cache hit',
         'cache.pooled': 'Token-weighted',
         'cache.points': 'sampled steps',
+        'cache.ttft': 'Avg first token (TTFT)',
+        'cache.tps': 'Output speed (TPS)',
+        'cache.tpsNote': 'Same arithmetic as the DSH conversation statistics: output tokens ÷ decode time',
+        'cache.hoverHint': 'Hover the curve to inspect one response',
         'cache.empty': 'This session has no step with a usage record yet.',
         'cache.loading': 'Reading session…',
         'cache.legend': 'Cache-read tokens ÷ context tokens (input + cache read + cache write)',
@@ -397,6 +405,10 @@ window.__ModuleLoader__.load({
       .dls-line-x{display:flex;justify-content:space-between;margin-top:6px;font-size:9px;color:var(--dsw-alias-label-secondary)}
       .dls-line-readout{font-size:11px;color:var(--dsw-alias-label-secondary);min-height:16px}
       .dls-line-readout b{color:var(--dsw-alias-label-primary);font-weight:600}
+      .dls-cache-stats{display:flex;flex-wrap:wrap;gap:14px 28px;padding:2px 0 4px}
+      .dls-cache-stat{display:grid;gap:5px}
+      .dls-cache-stat span{font-size:10px;color:var(--dsw-alias-label-secondary)}
+      .dls-cache-stat b{font-size:15px;font-weight:600;font-variant-numeric:tabular-nums}
     `
 
     const Style = () => h('style', null, CSS)
@@ -622,15 +634,20 @@ window.__ModuleLoader__.load({
       return h(
         'div',
         { className: 'dls-chart' },
+        h(
+          'div',
+          { className: 'dls-cache-stats' },
+          h('div', { className: 'dls-cache-stat' }, h('span', null, t('cache.ttft')), h('b', null, fmtMs(summary?.ttftAvg))),
+          h('div', { className: 'dls-cache-stat' },
+            h('span', { title: t('cache.tpsNote') }, t('cache.tps')),
+            h('b', null, `${fmtSpeed(summary?.tps)} tok/s`)),
+          h('div', { className: 'dls-cache-stat' }, h('span', null, t('cache.avg')), h('b', null, fmtPercent(summary?.avgRate))),
+          h('div', { className: 'dls-cache-stat' }, h('span', null, t('cache.pooled')), h('b', null, fmtPercent(summary?.pooledRate))),
+          h('div', { className: 'dls-cache-stat' }, h('span', null, t('cache.points')), h('b', null, fmtInt(summary?.steps))),
+        ),
         h('div', { className: 'dls-line-readout' },
           hovered === undefined || hovered === null
-            ? h(React.Fragment, null,
-              `${t('cache.avg')} `,
-              h('b', null, fmtPercent(summary?.avgRate)),
-              ` · ${t('cache.pooled')} `,
-              h('b', null, fmtPercent(summary?.pooledRate)),
-              ` · ${fmtInt(summary?.steps)} ${t('cache.points')}`,
-            )
+            ? t('cache.hoverHint')
             : h(React.Fragment, null,
               `${t('cache.hover')
                 .replace('{n}', String(hovered.n ?? hovered.i + 1))

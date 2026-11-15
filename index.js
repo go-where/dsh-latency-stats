@@ -26,7 +26,7 @@
 /** Exact route path the Client half reads. */
 const ROUTE_PATH = '/latency-stats/api/report'
 /** Build identity, surfaced in every response so a stale Host module is visible. */
-const BUILD = '2026-11-16.1'
+const BUILD = '2026-11-16.2'
 /** How long an "all Sessions" report stays warm before it is rebuilt. */
 const CACHE_TTL_MS = 120_000
 /** Upper bound of Sessions read by one cold scan (newest first). */
@@ -652,6 +652,17 @@ function seriesOf(entry) {
 
   const totalRead = series.reduce((sum, point) => sum + point.read, 0)
   const totalContext = series.reduce((sum, point) => sum + point.context, 0)
+  // DSH's own conversation statistics show TTFT as the per-Step mean and TPS
+  // as output tokens over the decode window, so this Session readout uses the
+  // exact same arithmetic and can be compared with the popover directly.
+  let decodeMs = 0
+  let decodeTokens = 0
+  for (const observation of observations) {
+    if (observation.tokens === null || observation.decodeMs === null) continue
+    decodeMs += observation.decodeMs
+    decodeTokens += observation.tokens
+  }
+  const ttftValues = observations.map(observation => observation.ttft)
   return {
     series,
     drops: drops.slice(-12),
@@ -659,6 +670,8 @@ function seriesOf(entry) {
       steps: observations.length,
       points: series.length,
       measured: measured.length,
+      ttftAvg: ttftValues.length === 0 ? null : Math.round(mean(ttftValues)),
+      tps: decodeMs <= 0 ? null : Math.round((decodeTokens / decodeMs) * 1000 * 10) / 10,
       avgRate: measured.length === 0 ? null : Math.round(mean(measured.map(point => point.rate)) * 10) / 10,
       pooledRate: totalContext <= 0 ? null : Math.round((totalRead / totalContext) * 1000) / 10,
       totalRead,

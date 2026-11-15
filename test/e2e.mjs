@@ -148,6 +148,7 @@ if (seriesBody.body.ok === false) throw new Error(`series failed: ${seriesBody.b
 let sessionReport = await call(`scope=session&sessionId=${encodeURIComponent(firstSession)}`)
 if (sessionReport.body.ok === false) throw new Error(`session report failed: ${sessionReport.body.error}`)
 console.log(`series: ${seriesBody.body.series.length} points, avg ${seriesBody.body.summary.avgRate}%, pooled ${seriesBody.body.summary.pooledRate}%`)
+console.log(`session readout: ttft ${seriesBody.body.summary.ttftAvg}ms, tps ${seriesBody.body.summary.tps} tok/s, steps ${seriesBody.body.summary.steps}`)
 console.log(`drops: ${seriesBody.body.drops.length}${seriesBody.body.drops.length === 0 ? '' : ` e.g. step ${seriesBody.body.drops[0].step} ${seriesBody.body.drops[0].baseline}% → ${seriesBody.body.drops[0].rate}% [${seriesBody.body.drops[0].reasons.join(',')}]`}`)
 console.log(`session report: ${sessionReport.body.totals.steps} steps, ${sessionReport.body.models.length} models, ${sessionReport.body.sessions.length} picker rows`)
 const titled = report.sessions.filter(row => typeof row.title === 'string' && row.title !== '')
@@ -228,6 +229,7 @@ const React = profileRequire('react')
 const { renderToStaticMarkup } = profileRequire('react-dom/server')
 const h = React.createElement
 const t = key => loaded.__test.DICT.zh[key] ?? key
+const expectMs = value => (value >= 1000 ? `${(value / 1000).toFixed(2)} s` : `${Math.round(value)} ms`)
 const { ReportBody, CacheChart, Panel, SidebarButton, SessionButton, openPanel, closePanel, buildPicker, pickerLabel, mergePickerRows } = loaded.__test
 
 const markupPerModel = renderToStaticMarkup(h(ReportBody, {
@@ -267,7 +269,7 @@ const markupDrop = renderToStaticMarkup(h(CacheChart, {
       reasons: ['compaction'],
     },
   ],
-  summary: { steps: 3, points: 3, avgRate: 65.7, pooledRate: 60, truncated: false },
+  summary: { steps: 3, points: 3, avgRate: 65.7, pooledRate: 60, ttftAvg: 5000, tps: 120, truncated: false },
   t,
 }))
 const markupReport = renderToStaticMarkup(h(ReportBody, {
@@ -347,6 +349,10 @@ const checks = [
     && markupReport.includes(report.recent[0].model) && markupReport.includes('最近响应')],
   ['cache line renders points', markupCache.includes('<path') && markupCache.includes('dls-line-plot')
     && markupCache.includes(`${seriesBody.body.summary.avgRate.toFixed(1)}%`)],
+  ['cache readout mirrors DSH session stats', markupCache.includes('首 token 平均 (TTFT)')
+    && markupCache.includes('输出速度 (TPS)')
+    && markupCache.includes(expectMs(seriesBody.body.summary.ttftAvg))
+    && markupCache.includes(`${seriesBody.body.summary.tps.toFixed(1)} tok/s`)],
   ['cache chart handles no data', markupCacheEmpty.includes('100%') && !markupCacheEmpty.includes('<path')],
   ['cache section sits above latest responses', markupReport.indexOf('data-cache-slot') > 0
     && markupReport.indexOf('data-cache-slot') < markupReport.indexOf('最近响应')],
