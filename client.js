@@ -44,7 +44,7 @@ window.__ModuleLoader__.load({
         'table.total': '累计 tokens',
         'models.filter': '模型筛选',
         'models.showAll': '全部显示',
-        'models.hideAll': '全部隐藏',
+        'models.hideAll': '全不显示',
         'models.hiddenAll': '所有模型都已隐藏，点「全部显示」恢复。',
         'models.hiddenNote': '已隐藏 {n} 个模型',
         'cache.session': '会话',
@@ -885,7 +885,7 @@ window.__ModuleLoader__.load({
     // ---------------------------------------------------------------------
     function ReportBody({
       data, error, scanning, scanLabel, t, modelKey, onModelKey, cache,
-      hiddenModels, filterOpen, onToggleModel, onToggleFilter, onShowAll,
+      hiddenModels, filterOpen, onToggleModel, onToggleFilter, onShowAll, onHideAll,
     }) {
       const models = data?.models ?? []
       const hidden = hiddenModels instanceof Set ? hiddenModels : new Set()
@@ -986,6 +986,7 @@ window.__ModuleLoader__.load({
                     'data-on': hidden.has(row.key) ? '0' : '1',
                     onClick: () => onToggleModel(row.key),
                   }, row.key)),
+                  h('button', { type: 'button', className: 'dls-btn dls-btn-sm', onClick: onHideAll }, t('models.hideAll')),
                   h('button', { type: 'button', className: 'dls-btn dls-btn-sm', onClick: onShowAll }, t('models.showAll')),
                 )
                 : null,
@@ -1164,6 +1165,13 @@ window.__ModuleLoader__.load({
           return next
         })
       }, [])
+      const hideAllModels = useCallback(() => {
+        setHiddenModels(() => {
+          const next = new Set((data?.models ?? []).map(row => row.key))
+          saveHidden(next)
+          return next
+        })
+      }, [data])
 
       if (!open) return null
 
@@ -1222,6 +1230,7 @@ window.__ModuleLoader__.load({
                 onToggleModel: toggleModel,
                 onToggleFilter: () => setFilterOpen(value => !value),
                 onShowAll: showAllModels,
+                onHideAll: hideAllModels,
                 // The cache curve sits above "latest responses": it explains
                 // the numbers a reader just saw in the tables.
                 cache: data !== null

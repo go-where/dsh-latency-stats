@@ -272,7 +272,7 @@ const markupDrop = renderToStaticMarkup(h(CacheChart, {
 }))
 const markupReport = renderToStaticMarkup(h(ReportBody, {
   data: report, error: null, scanning: false, scanLabel: '', t, modelKey: '', onModelKey: () => {},
-  hiddenModels: new Set(), filterOpen: false, onToggleModel: () => {}, onToggleFilter: () => {}, onShowAll: () => {},
+  hiddenModels: new Set(), filterOpen: false, onToggleModel: () => {}, onToggleFilter: () => {}, onShowAll: () => {}, onHideAll: () => {},
   cache: h('div', { 'data-cache-slot': '1' }, h(CacheChart, {
     series: seriesBody.body.series, drops: seriesBody.body.drops, summary: seriesBody.body.summary, t,
   })),
@@ -280,12 +280,12 @@ const markupReport = renderToStaticMarkup(h(ReportBody, {
 const hiddenKey = report.models[0].key
 const markupFiltered = renderToStaticMarkup(h(ReportBody, {
   data: report, error: null, scanning: false, scanLabel: '', t, modelKey: hiddenKey, onModelKey: () => {},
-  hiddenModels: new Set([hiddenKey]), filterOpen: true, onToggleModel: () => {}, onToggleFilter: () => {}, onShowAll: () => {},
+  hiddenModels: new Set([hiddenKey]), filterOpen: true, onToggleModel: () => {}, onToggleFilter: () => {}, onShowAll: () => {}, onHideAll: () => {},
 }))
 const markupAllHidden = renderToStaticMarkup(h(ReportBody, {
   data: report, error: null, scanning: false, scanLabel: '', t, modelKey: '', onModelKey: () => {},
   hiddenModels: new Set(report.models.map(row => row.key)), filterOpen: false,
-  onToggleModel: () => {}, onToggleFilter: () => {}, onShowAll: () => {},
+  onToggleModel: () => {}, onToggleFilter: () => {}, onShowAll: () => {}, onHideAll: () => {},
 }))
 const markupSession = renderToStaticMarkup(h(ReportBody, {
   data: sessionReport.body, error: null, scanning: false, scanLabel: '', t, modelKey: '', onModelKey: () => {},
@@ -338,6 +338,7 @@ const checks = [
   ['model filter hides a model', markupFiltered.includes('data-on="0"')
     && (markupFiltered.match(/class="dls-swatch"/g) ?? []).length === report.models.length - 1
     && markupFiltered.includes('6/7')
+    && markupFiltered.includes('全不显示') && markupFiltered.includes('全部显示')
     && (markupReport.match(/class="dls-swatch"/g) ?? []).length === report.models.length],
   ['hidden-everything state renders', markupAllHidden.includes('所有模型都已隐藏')],
   ['model filter switches the chart', markupPerModel.includes('selected') && markupPerModel !== markupReport
