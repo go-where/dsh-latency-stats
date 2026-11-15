@@ -70,11 +70,15 @@ function readEvents(file) {
 
 const logs = sessionLogs()
 const byId = new Map()
+const headers = new Map()
 for (const entry of logs) {
   const lines = readEvents(entry.file)
   const header = lines[0]?.type === 'session' ? lines[0] : undefined
+  // The durable header carries parentSession/origin/delegationDepth, which is
+  // what the picker turns into the conversation tree.
+  headers.set(entry.id, header ?? { id: entry.id })
   byId.set(entry.id, {
-    session: { id: entry.id },
+    session: header ?? { id: entry.id },
     inheritedEventCount: 0,
     events: header === undefined ? lines : lines.slice(1),
   })
@@ -90,7 +94,7 @@ const hostCtx = {
   effect: fn => { fn(); return () => {} },
   webServer: { register: route => { routes.set(route.path, route.handler); return () => {} } },
   sessionQuery: {
-    listSessions: async () => logs.map(entry => ({ header: { id: entry.id }, live: false })),
+    listSessions: async () => logs.map(entry => ({ header: headers.get(entry.id), live: false })),
     readSession: async id => byId.get(id),
   },
 }
@@ -198,7 +202,7 @@ globalThis.fetch = async () => { throw new Error('network is not used by the ser
 
 const source = fs.readFileSync(new URL('../client.js', import.meta.url), 'utf8').replace(
   "    return {\n      inject: ['slots', 'locale'],",
-  "    return {\n      __test: { ReportBody, CacheChart, Panel, SidebarButton, SessionButton, DICT, openPanel, closePanel },\n      inject: ['slots', 'locale'],",
+  "    return {\n      __test: { ReportBody, CacheChart, Panel, SidebarButton, SessionButton, DICT, openPanel, closePanel, buildPicker },\n      inject: ['slots', 'locale'],",
 )
 vm.runInThisContext(source, { filename: 'client.js' })
 if (loaded === undefined) throw new Error('client module did not register through the module loader')
@@ -224,7 +228,7 @@ const React = profileRequire('react')
 const { renderToStaticMarkup } = profileRequire('react-dom/server')
 const h = React.createElement
 const t = key => loaded.__test.DICT.zh[key] ?? key
-const { ReportBody, CacheChart, Panel, SidebarButton, SessionButton, openPanel, closePanel } = loaded.__test
+const { ReportBody, CacheChart, Panel, SidebarButton, SessionButton, openPanel, closePanel, buildPicker } = loaded.__test
 
 const markupPerModel = renderToStaticMarkup(h(ReportBody, {
   data: report, error: null, scanning: false, scanLabel: '', t, modelKey: report.models[0].key, onModelKey: () => {},
@@ -291,6 +295,24 @@ openPanel('session-x')
 const markupOpen = renderToStaticMarkup(h(Panel, { t }))
 closePanel()
 
+// The picker groups subagents under their conversation instead of listing
+// every Session flat, and hides empty leaves.
+const pickerRows = [
+  { id: 'root-a', title: 'Conversation A', createdAt: 100, updatedAt: 500, steps: 9, parentSession: null, subagent: false, depth: 0 },
+  { id: 'child-1', title: 'you are the agent for A', createdAt: 200, updatedAt: 300, steps: 19, parentSession: 'root-a', subagent: true, depth: 1 },
+  { id: 'empty', title: '', createdAt: 50, updatedAt: null, steps: 0, parentSession: null, subagent: false, depth: 0 },
+  { id: 'root-b', title: 'Conversation B', createdAt: 90, updatedAt: 400, steps: 3, parentSession: null, subagent: false, depth: 0 },
+]
+const picker = buildPicker(pickerRows, 'root-a')
+const pickerMissing = buildPicker(pickerRows, 'elsewhere')
+const realTree = buildPicker(report.sessions, report.sessions[0]?.id)
+console.log(`real picker: ${realTree.length} entries (${realTree.filter(entry => entry.depth === 0).length} conversations, `
+  + `${realTree.filter(entry => entry.depth > 0).length} subagents) out of ${report.sessions.length} sessions`)
+for (const entry of realTree.slice(0, 8)) {
+  console.log(`  ${entry.depth > 0 ? '↳ ' : '• '}${entry.row.title || '(untitled)'} · ${entry.row.steps ?? '?'} 步`
+    + `${entry.childCount > 0 ? ` (+${entry.childCount} 子代理)` : ''}`)
+}
+
 const checks = [
   ['report table has every model', (markupReport.match(/dls-swatch/g) ?? []).length === report.models.length],
   ['cards render totals', markupReport.includes(report.totals.steps.toLocaleString('en-US'))],
@@ -320,6 +342,12 @@ const checks = [
     && markupDrop.includes('dls-legend') && markupDrop.includes('上下文被改写') && markupDrop.includes('空闲过期')
     && markupDrop.includes('<title')],
   ['real session reports drops', Array.isArray(seriesBody.body.drops)],
+  ['picker nests subagents under a conversation', picker.length === 3
+    && picker[0].row.id === 'root-a' && picker[0].depth === 0 && picker[0].childCount === 1
+    && picker[1].row.id === 'child-1' && picker[1].depth === 1
+    && picker[2].row.id === 'root-b'
+    && !picker.some(entry => entry.row.id === 'empty')],
+  ['picker keeps the selected session', pickerMissing.some(entry => entry.row.id === 'elsewhere')],
   ['single-session report keeps its models', markupSession.includes('dsh') === false || markupSession.includes('dls-swatch')],
   ['single-session report renders stats', sessionReport.body.totals.steps > 0 && markupSession.includes('dls-stat')],
   ['rescan reuses closed sessions', (rescan.body.scan?.reused ?? 0) === (rescan.body.scan?.sessions ?? -1)

@@ -26,7 +26,7 @@
 /** Exact route path the Client half reads. */
 const ROUTE_PATH = '/latency-stats/api/report'
 /** Build identity, surfaced in every response so a stale Host module is visible. */
-const BUILD = '2026-11-15.4'
+const BUILD = '2026-11-16.1'
 /** How long an "all Sessions" report stays warm before it is rebuilt. */
 const CACHE_TTL_MS = 120_000
 /** Upper bound of Sessions read by one cold scan (newest first). */
@@ -42,7 +42,7 @@ const MIN_STREAM_MS = 100
 /** Steps kept in one cache-hit series. */
 const SERIES_LIMIT = 2000
 /** Sessions offered to the cache-hit picker. */
-const SESSION_ROWS = 80
+const PICKER_ROWS = 400
 
 /** Services this plugin needs; without them it stays inactive instead of throwing. */
 export const inject = ['webServer', 'sessionQuery']
@@ -434,9 +434,12 @@ async function readOne(ctx, id, warnings) {
   }
 }
 
-/** @returns one picker row for a folded Session. */
+/**
+ * One picker row. `parentSession`/`subagent`/`depth` let the Client rebuild the
+ * conversation tree instead of listing every subagent as its own conversation.
+ * @returns the row.
+ */
 function sessionRow(id, header, entry) {
-  const models = new Set(entry.observations.map(observation => `${observation.provider} / ${observation.model}`))
   const last = entry.observations.length === 0 ? null : entry.observations[entry.observations.length - 1].at
   return {
     id,
@@ -444,7 +447,9 @@ function sessionRow(id, header, entry) {
     createdAt: typeof header?.createdAt === 'number' ? header.createdAt : last,
     updatedAt: last,
     steps: entry.observations.length,
-    models: [...models].slice(0, 4),
+    parentSession: typeof header?.parentSession === 'string' ? header.parentSession : null,
+    subagent: header?.origin === 'subagent',
+    depth: typeof header?.delegationDepth === 'number' ? header.delegationDepth : 0,
     cwd: typeof header?.cwd === 'string' ? header.cwd : undefined,
   }
 }
@@ -500,10 +505,10 @@ async function scanAll(ctx, state) {
   await Promise.all(Array.from({ length: Math.min(SCAN_CONCURRENCY, pending.length) }, worker))
 
   observations.sort((a, b) => a.at - b.at)
-  rows.sort((a, b) => (b.createdAt ?? b.updatedAt ?? 0) - (a.createdAt ?? a.updatedAt ?? 0))
+  rows.sort((a, b) => (b.updatedAt ?? b.createdAt ?? 0) - (a.updatedAt ?? a.createdAt ?? 0))
   return {
     observations,
-    rows: rows.slice(0, SESSION_ROWS),
+    rows: rows.slice(0, PICKER_ROWS),
     report: {
       scope: 'all',
       sessionId: null,
@@ -520,15 +525,16 @@ async function scanAll(ctx, state) {
 /**
  * Cheap picker list for the cache chart: session headers plus whatever the
  * fold cache already knows. Never reads a log, so it is safe to call while the
- * panel opens a single conversation.
+ * panel opens a single conversation. The Client turns these rows into the
+ * conversation tree (root Session plus its subagents).
  * @param ctx - Host plugin context.
  * @param state - shared caches.
- * @returns picker rows, newest first.
+ * @returns picker rows.
  */
 async function sessionPickerRows(ctx, state) {
   const records = await ctx.sessionQuery.listSessions()
   const rows = []
-  for (const record of records.slice(0, SESSION_ROWS)) {
+  for (const record of records.slice(0, PICKER_ROWS)) {
     const id = record.header?.id
     if (typeof id !== 'string') continue
     const cached = state.sessions.get(id)
@@ -540,6 +546,9 @@ async function sessionPickerRows(ctx, state) {
         ? cached.observations[cached.observations.length - 1].at
         : null,
       steps: cached === undefined ? null : cached.observations.length,
+      parentSession: typeof record.header?.parentSession === 'string' ? record.header.parentSession : null,
+      subagent: record.header?.origin === 'subagent',
+      depth: typeof record.header?.delegationDepth === 'number' ? record.header.delegationDepth : 0,
       cwd: typeof record.header?.cwd === 'string' ? record.header.cwd : undefined,
     })
   }

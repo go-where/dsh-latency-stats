@@ -48,6 +48,7 @@ window.__ModuleLoader__.load({
         'models.hiddenAll': '所有模型都已隐藏，点「全部显示」恢复。',
         'models.hiddenNote': '已隐藏 {n} 个模型',
         'cache.session': '会话',
+        'cache.subagent': '子代理',
         'cache.avg': '平均命中',
         'cache.pooled': '按 token 加权',
         'cache.points': '个采样步',
@@ -134,6 +135,7 @@ window.__ModuleLoader__.load({
         'models.hiddenAll': 'Every model is hidden. Use “Show all” to bring them back.',
         'models.hiddenNote': '{n} models hidden',
         'cache.session': 'Session',
+        'cache.subagent': 'subagent',
         'cache.avg': 'Avg hit',
         'cache.pooled': 'Token-weighted',
         'cache.points': 'sampled steps',
@@ -717,6 +719,50 @@ window.__ModuleLoader__.load({
       )
     }
 
+    /**
+     * One option per conversation, with its subagents nested underneath:
+     * `sessionQuery` lists every Session (a subagent is a Session too), so a
+     * flat list buries the conversations the reader actually recognises.
+     * @param sessions - picker rows from the Host.
+     * @param currentId - Session that must always be selectable.
+     * @returns ordered `{ row, depth, childCount }` entries.
+     */
+    const buildPicker = (sessions, currentId) => {
+      const rows = (Array.isArray(sessions) ? sessions : []).filter(row => row && typeof row.id === 'string')
+      const byId = new Map(rows.map(row => [row.id, row]))
+      const children = new Map()
+      const roots = []
+      for (const row of rows) {
+        const parent = typeof row.parentSession === 'string' && row.parentSession !== '' ? row.parentSession : null
+        if (parent !== null && byId.has(parent)) {
+          if (!children.has(parent)) children.set(parent, [])
+          children.get(parent).push(row)
+        } else {
+          roots.push(row)
+        }
+      }
+      const activity = row => row.updatedAt ?? row.createdAt ?? 0
+      roots.sort((a, b) => activity(b) - activity(a))
+      const ordered = []
+      const push = (row, depth) => {
+        const kids = children.get(row.id) ?? []
+        ordered.push({ row, depth, childCount: kids.length })
+        kids.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0))
+        for (const kid of kids) push(kid, depth + 1)
+      }
+      for (const root of roots) push(root, 0)
+      // Drop empty leaves (a Session with no model response and no subagent);
+      // keep the selected one so the control never shows a different label.
+      const kept = ordered.filter(entry => entry.row.id === currentId
+        || entry.childCount > 0
+        || entry.row.steps === null
+        || entry.row.steps > 0)
+      if (typeof currentId === 'string' && currentId !== '' && !kept.some(entry => entry.row.id === currentId)) {
+        kept.unshift({ row: { id: currentId, title: '', createdAt: null, steps: null }, depth: 0, childCount: 0 })
+      }
+      return kept
+    }
+
     /** Fetch one Session's cache series and render it. */
     function CacheSection({ t, sessions, defaultSessionId, refreshToken }) {
       const [selected, setSelected] = useState(defaultSessionId ?? '')
@@ -725,18 +771,9 @@ window.__ModuleLoader__.load({
       const [loading, setLoading] = useState(false)
       const forcedRef = useRef('')
 
-      const options = useMemo(() => {
-        const list = Array.isArray(sessions) ? [...sessions] : []
-        if (list.length === 0 && typeof defaultSessionId === 'string' && defaultSessionId !== '') {
-          list.push({ id: defaultSessionId, title: '', createdAt: null, steps: null })
-        }
-        if (typeof defaultSessionId === 'string' && defaultSessionId !== '' && !list.some(row => row.id === defaultSessionId)) {
-          list.unshift({ id: defaultSessionId, title: '', createdAt: null, steps: null })
-        }
-        return list
-      }, [sessions, defaultSessionId])
+      const options = useMemo(() => buildPicker(sessions, defaultSessionId), [sessions, defaultSessionId])
 
-      const target = selected !== '' ? selected : (defaultSessionId ?? options[0]?.id ?? '')
+      const target = selected !== '' ? selected : (defaultSessionId ?? options[0]?.row.id ?? '')
 
       useEffect(() => {
         if (target === '') return undefined
@@ -761,10 +798,20 @@ window.__ModuleLoader__.load({
       }, [target, refreshToken])
 
       const session = payload?.session
-      const label = row => {
-        const title = row.title !== undefined && row.title !== '' ? row.title : fmtTime(row.createdAt)
-        const steps = typeof row.steps === 'number' ? `${row.steps} ${t('chart.steps')}` : ''
-        return `${title}${steps === '' ? '' : ` · ${steps}`}`
+      /** One option label: conversation title, its subagents indented under it. */
+      const label = entry => {
+        const row = entry.row
+        const raw = typeof row.title === 'string' && row.title.trim() !== '' ? row.title.trim() : fmtTime(row.createdAt)
+        // Subagent titles repeat their prompt, so the start time is what tells
+        // them apart; a conversation is identified by its title.
+        const limit = entry.depth > 0 ? 22 : 30
+        const title = raw.length > limit ? `${raw.slice(0, limit - 1)}…` : raw
+        const parts = []
+        if (entry.depth > 0) parts.push(fmtTime(row.createdAt))
+        parts.push(title)
+        if (typeof row.steps === 'number') parts.push(`${row.steps} ${t('chart.steps')}`)
+        if (entry.childCount > 0) parts.push(`+${entry.childCount} ${t('cache.subagent')}`)
+        return `${entry.depth > 0 ? '　↳ ' : ''}${parts.join(' · ')}`
       }
 
       return h(
@@ -780,7 +827,7 @@ window.__ModuleLoader__.load({
               value: target,
               onChange: event => setSelected(event.target.value),
               'aria-label': t('cache.session'),
-            }, options.map(row => h('option', { key: row.id, value: row.id }, label(row))))
+            }, options.map(entry => h('option', { key: entry.row.id, value: entry.row.id }, label(entry))))
             : h('span', { className: 'dls-muted' }, session?.title ?? ''),
           h('span', { className: 'dls-muted', style: { marginLeft: 'auto' } }, t('cache.legend')),
         ),
