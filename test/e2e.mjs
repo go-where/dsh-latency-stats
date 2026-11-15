@@ -202,7 +202,7 @@ globalThis.fetch = async () => { throw new Error('network is not used by the ser
 
 const source = fs.readFileSync(new URL('../client.js', import.meta.url), 'utf8').replace(
   "    return {\n      inject: ['slots', 'locale'],",
-  "    return {\n      __test: { ReportBody, CacheChart, Panel, SidebarButton, SessionButton, DICT, openPanel, closePanel, buildPicker },\n      inject: ['slots', 'locale'],",
+  "    return {\n      __test: { ReportBody, CacheChart, Panel, SidebarButton, SessionButton, DICT, openPanel, closePanel, buildPicker, pickerLabel, mergePickerRows },\n      inject: ['slots', 'locale'],",
 )
 vm.runInThisContext(source, { filename: 'client.js' })
 if (loaded === undefined) throw new Error('client module did not register through the module loader')
@@ -228,7 +228,7 @@ const React = profileRequire('react')
 const { renderToStaticMarkup } = profileRequire('react-dom/server')
 const h = React.createElement
 const t = key => loaded.__test.DICT.zh[key] ?? key
-const { ReportBody, CacheChart, Panel, SidebarButton, SessionButton, openPanel, closePanel, buildPicker } = loaded.__test
+const { ReportBody, CacheChart, Panel, SidebarButton, SessionButton, openPanel, closePanel, buildPicker, pickerLabel, mergePickerRows } = loaded.__test
 
 const markupPerModel = renderToStaticMarkup(h(ReportBody, {
   data: report, error: null, scanning: false, scanLabel: '', t, modelKey: report.models[0].key, onModelKey: () => {},
@@ -292,7 +292,10 @@ const markupSession = renderToStaticMarkup(h(ReportBody, {
 }))
 
 openPanel('session-x')
-const markupOpen = renderToStaticMarkup(h(Panel, { t }))
+const markupOpen = renderToStaticMarkup(h(Panel, {
+  t,
+  useSessions: selector => selector({ byId: {} }),
+}))
 closePanel()
 
 // The picker groups subagents under their conversation instead of listing
@@ -306,6 +309,19 @@ const pickerRows = [
 const picker = buildPicker(pickerRows, 'root-a')
 const pickerMissing = buildPicker(pickerRows, 'elsewhere')
 const realTree = buildPicker(report.sessions, report.sessions[0]?.id)
+
+// A label must be the conversation name even when the Host never folded that
+// Session: the client session summaries carry `displayTitle`.
+const merged = mergePickerRows(
+  [{ id: 'root-a', title: '', createdAt: 100, updatedAt: 500, steps: 9, parentSession: null }],
+  {
+    'root-a': { displayTitle: '12306 抢票系统开发计划', updatedAt: 500, parentId: null, origin: undefined },
+    'child-x': { displayTitle: 'subagent prompt', updatedAt: 600, parentId: 'root-a', origin: 'subagent' },
+  },
+)
+const mergedTree = buildPicker(merged, 'root-a')
+const labelRoot = pickerLabel(mergedTree[0], t, () => 'time')
+const labelChild = pickerLabel(mergedTree[1], t, () => 'time')
 console.log(`real picker: ${realTree.length} entries (${realTree.filter(entry => entry.depth === 0).length} conversations, `
   + `${realTree.filter(entry => entry.depth > 0).length} subagents) out of ${report.sessions.length} sessions`)
 for (const entry of realTree.slice(0, 8)) {
@@ -348,6 +364,9 @@ const checks = [
     && picker[2].row.id === 'root-b'
     && !picker.some(entry => entry.row.id === 'empty')],
   ['picker keeps the selected session', pickerMissing.some(entry => entry.row.id === 'elsewhere')],
+  ['picker labels use conversation names', labelRoot === '12306 抢票系统开发计划 · 9 步 · +1 子代理'
+    && labelChild === '　↳ subagent prompt' && mergedTree.length === 2
+    && mergedTree[0].childCount === 1],
   ['single-session report keeps its models', markupSession.includes('dsh') === false || markupSession.includes('dls-swatch')],
   ['single-session report renders stats', sessionReport.body.totals.steps > 0 && markupSession.includes('dls-stat')],
   ['rescan reuses closed sessions', (rescan.body.scan?.reused ?? 0) === (rescan.body.scan?.sessions ?? -1)

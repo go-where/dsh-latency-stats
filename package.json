@@ -1,6 +1,6 @@
 {
   "name": "dsh-latency-stats",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "private": true,
   "description": "Model performance statistics for DeepSeek Harness: first-token latency, output speed and cache-hit rate per model, bucketed by hour of day.",
   "type": "module",

@@ -763,6 +763,58 @@ window.__ModuleLoader__.load({
       return kept
     }
 
+    /**
+     * Picker label for one entry. Subagents repeat their prompt as a title, so
+     * they get the indent marker; their names may collide, which is fine.
+     */
+    const pickerLabel = (entry, t, fmtTime) => {
+      const row = entry.row
+      const raw = typeof row.title === 'string' && row.title.trim() !== ''
+        ? row.title.trim()
+        : (row.cwd !== undefined ? `${row.cwd.split(/[\\/]/).filter(Boolean).pop() ?? ''} · ${fmtTime(row.createdAt)}` : fmtTime(row.createdAt))
+      const limit = entry.depth > 0 ? 26 : 34
+      const title = raw.length > limit ? `${raw.slice(0, limit - 1)}…` : raw
+      const parts = [title]
+      if (typeof row.steps === 'number') parts.push(`${row.steps} ${t('chart.steps')}`)
+      if (entry.childCount > 0) parts.push(`+${entry.childCount} ${t('cache.subagent')}`)
+      return `${entry.depth > 0 ? '　↳ ' : ''}${parts.join(' · ')}`
+    }
+
+    /**
+     * Merge the Host's per-Session step counts with the Client's session
+     * summaries (the rows the sidebar already shows). The Host only knows a
+     * title once it has folded that Session; the summaries carry `displayTitle`
+     * for every listed conversation, so picker labels never degrade to a bare
+     * timestamp.
+     * @param hostRows - `sessions` from the report payload.
+     * @param summaries - `state.byId` of the sessions store.
+     * @returns one row per Session.
+     */
+    const mergePickerRows = (hostRows, summaries) => {
+      const rows = (Array.isArray(hostRows) ? hostRows : []).filter(row => row && typeof row.id === 'string')
+      const byId = new Map(rows.map(row => [row.id, row]))
+      const merged = []
+      const seen = new Set()
+      for (const [id, summary] of Object.entries(summaries ?? {})) {
+        if (summary === undefined || summary === null) continue
+        const host = byId.get(id)
+        seen.add(id)
+        merged.push({
+          id,
+          title: summary.displayTitle ?? summary.title ?? host?.title ?? '',
+          createdAt: host?.createdAt ?? summary.updatedAt ?? null,
+          updatedAt: summary.updatedAt ?? host?.updatedAt ?? null,
+          steps: host?.steps ?? null,
+          parentSession: summary.parentId ?? host?.parentSession ?? null,
+          subagent: summary.origin === 'subagent' || host?.subagent === true,
+          depth: host?.depth ?? (summary.origin === 'subagent' ? 1 : 0),
+          cwd: summary.cwd ?? host?.cwd,
+        })
+      }
+      for (const row of rows) if (!seen.has(row.id)) merged.push(row)
+      return merged
+    }
+
     /** Fetch one Session's cache series and render it. */
     function CacheSection({ t, sessions, defaultSessionId, refreshToken }) {
       const [selected, setSelected] = useState(defaultSessionId ?? '')
@@ -798,21 +850,8 @@ window.__ModuleLoader__.load({
       }, [target, refreshToken])
 
       const session = payload?.session
-      /** One option label: conversation title, its subagents indented under it. */
-      const label = entry => {
-        const row = entry.row
-        const raw = typeof row.title === 'string' && row.title.trim() !== '' ? row.title.trim() : fmtTime(row.createdAt)
-        // Subagent titles repeat their prompt, so the start time is what tells
-        // them apart; a conversation is identified by its title.
-        const limit = entry.depth > 0 ? 22 : 30
-        const title = raw.length > limit ? `${raw.slice(0, limit - 1)}…` : raw
-        const parts = []
-        if (entry.depth > 0) parts.push(fmtTime(row.createdAt))
-        parts.push(title)
-        if (typeof row.steps === 'number') parts.push(`${row.steps} ${t('chart.steps')}`)
-        if (entry.childCount > 0) parts.push(`+${entry.childCount} ${t('cache.subagent')}`)
-        return `${entry.depth > 0 ? '　↳ ' : ''}${parts.join(' · ')}`
-      }
+      /** One option label: conversation name, its subagents indented under it. */
+      const label = entry => pickerLabel(entry, t, fmtTime)
 
       return h(
         'div',
@@ -1034,6 +1073,9 @@ window.__ModuleLoader__.load({
     function Panel(props) {
       const t = props.t
       const uiState = useUi()
+      // Same session store the sidebar renders: it carries `displayTitle` for
+      // every listed conversation, which the picker needs before any scan.
+      const summaries = props.useSessions(state => state.byId)
       const [data, setData] = useState(null)
       const [error, setError] = useState(null)
       const [scanning, setScanning] = useState(false)
@@ -1098,6 +1140,7 @@ window.__ModuleLoader__.load({
       }, [open, uiState.scope, uiState.sessionId, uiState.refreshToken, t])
 
       const refresh = useCallback(() => { requestRescan() }, [])
+      const pickerRows = useMemo(() => mergePickerRows(data?.sessions, summaries), [data, summaries])
       const toggleModel = useCallback(key => {
         setHiddenModels(current => {
           const next = new Set(current)
@@ -1177,7 +1220,7 @@ window.__ModuleLoader__.load({
                 cache: data !== null
                   ? h(CacheSection, {
                     t,
-                    sessions: data.sessions,
+                    sessions: pickerRows,
                     defaultSessionId: uiState.sessionId ?? undefined,
                     refreshToken: uiState.refreshToken,
                   })
