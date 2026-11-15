@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "模型性能统计",
+    "description": "统计每个模型的首 token 延迟与输出速度，按每天的时间段分组，覆盖当前对话和全部历史会话。",
+    "detail": "docs/DETAIL.md"
+  }
+}

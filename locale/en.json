@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "Model performance",
+    "description": "First-token latency and output speed for every model, bucketed by hour of day, across this conversation and all past sessions.",
+    "detail": "docs/DETAIL.md"
+  }
+}

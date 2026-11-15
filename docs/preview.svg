@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 190" width="780" height="190" role="img" aria-label="dsh-latency-stats data flow">
+  <rect width="780" height="190" rx="12" fill="#0d0d0d"/>
+  <g font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="13">
+    <g fill="#111111" stroke="#2a2a2a">
+      <rect x="22" y="58" width="164" height="74" rx="9"/>
+      <rect x="212" y="58" width="176" height="74" rx="9"/>
+      <rect x="414" y="58" width="148" height="74" rx="9"/>
+      <rect x="588" y="58" width="170" height="74" rx="9"/>
+    </g>
+    <g fill="#e5e5e5">
+      <text x="104" y="88" text-anchor="middle">会话日志</text>
+      <text x="300" y="88" text-anchor="middle">Host 折叠</text>
+      <text x="488" y="88" text-anchor="middle">报告 JSON</text>
+      <text x="673" y="88" text-anchor="middle">面板</text>
+    </g>
+    <g fill="#8a8a8a" font-size="11">
+      <text x="104" y="110" text-anchor="middle">session.v4.jsonl</text>
+      <text x="300" y="110" text-anchor="middle">ttft · speed · cache</text>
+      <text x="488" y="110" text-anchor="middle">模型 × 小时 / 每步序列</text>
+      <text x="673" y="110" text-anchor="middle">sidebar · session header</text>
+    </g>
+    <g stroke="#3f3f3f" stroke-width="1.5" fill="none">
+      <path d="M186 95 H208" marker-end="url(#a)"/>
+      <path d="M388 95 H410" marker-end="url(#a)"/>
+      <path d="M562 95 H584" marker-end="url(#a)"/>
+    </g>
+    <g fill="#22c55e">
+      <circle cx="300" cy="42" r="3"/>
+      <text x="310" y="46" font-size="10" fill="#8a8a8a">step/start → 首个 token → assistant/message</text>
+    </g>
+    <text x="22" y="160" font-size="11" fill="#6b6b6b">只读 sessionQuery，不写入任何会话事件；已关闭的会话复用上次折叠结果。</text>
+  </g>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0 0 L10 5 L0 10 z" fill="#3f3f3f"/>
+    </marker>
+  </defs>
+</svg>
