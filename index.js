@@ -26,7 +26,7 @@
 /** Exact route path the Client half reads. */
 const ROUTE_PATH = '/latency-stats/api/report'
 /** Build identity, surfaced in every response so a stale Host module is visible. */
-const BUILD = '2026-11-16.2'
+const BUILD = '2026-11-16.3'
 /** How long an "all Sessions" report stays warm before it is rebuilt. */
 const CACHE_TTL_MS = 120_000
 /** Upper bound of Sessions read by one cold scan (newest first). */
@@ -115,6 +115,7 @@ function foldSession(snapshot) {
   const inherited = snapshot.inheritedEventCount ?? 0
   const observations = []
   const rewrites = []
+  const sessionId = typeof snapshot.session?.id === 'string' ? snapshot.session.id : ''
   let title = ''
   let open = null
   const close = () => { open = null }
@@ -152,6 +153,7 @@ function foldSession(snapshot) {
         observations.push({
           provider: typeof source.provider === 'string' && source.provider !== '' ? source.provider : 'unknown',
           model: typeof source.model === 'string' && source.model !== '' ? source.model : 'unknown',
+          sessionId,
           at: event.time,
           turn,
           step,
@@ -293,6 +295,7 @@ function aggregate(observations, sessionRows, meta) {
         ttft: [],
         speeds: [],
         tokens: [],
+        sessions: new Set(),
         firstAt: observation.at,
         lastAt: observation.at,
       }
@@ -301,6 +304,9 @@ function aggregate(observations, sessionRows, meta) {
     }
     addToBucket(model.bucket, observation)
     addToBucket(totals, observation)
+    if (typeof observation.sessionId === 'string' && observation.sessionId !== '') {
+      model.sessions.add(observation.sessionId)
+    }
     model.firstAt = Math.min(model.firstAt, observation.at)
     model.lastAt = Math.max(model.lastAt, observation.at)
     model.ttft.push(observation.ttft)
@@ -349,6 +355,7 @@ function aggregate(observations, sessionRows, meta) {
         provider: model.provider,
         model: model.model,
         steps: model.bucket.steps,
+        sessions: model.sessions.size,
         firstAt: model.firstAt,
         lastAt: model.lastAt,
         ttftAvg: figures.ttftMs,

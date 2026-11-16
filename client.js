@@ -31,7 +31,7 @@ window.__ModuleLoader__.load({
         'chart.ttft': '平均首 token 延迟（ms）',
         'chart.speed': '平均输出速度（tok/s，含首 token）',
         'chart.steps': '步',
-        'chart.model': '图表模型',
+        'chart.model': '模型',
         'chart.all': '全部模型',
         'chart.axis': '本地时间（0–23 时）',
         'table.model': '模型',
@@ -122,7 +122,7 @@ window.__ModuleLoader__.load({
         'chart.ttft': 'Average first-token latency (ms)',
         'chart.speed': 'Average output speed (tok/s, first token included)',
         'chart.steps': 'steps',
-        'chart.model': 'Chart model',
+        'chart.model': 'Model',
         'chart.all': 'All models',
         'chart.axis': 'Local time (0–23 h)',
         'table.model': 'Model',
@@ -471,7 +471,7 @@ window.__ModuleLoader__.load({
     // ---------------------------------------------------------------------
     // Charts
     // ---------------------------------------------------------------------
-    function HourBars({ rows, field, kind, t, unit, format }) {
+    function HourBars({ rows, field, kind, t, format }) {
       const values = rows.map(row => row[field])
       const peak = Math.max(0, ...values.filter(value => typeof value === 'number'))
       const max = niceMax(peak)
@@ -495,7 +495,7 @@ window.__ModuleLoader__.load({
                 key: row.hour,
                 className: value === null ? 'dls-bar empty' : kind === 'speed' ? 'dls-bar speed' : 'dls-bar',
                 style: { height: `${height}%` },
-                title: `${String(row.hour).padStart(2, '0')}:00 · ${value === null ? dash : `${format(value)}${unit}`} · ${row.steps} ${t('chart.steps')}`,
+                title: `${String(row.hour).padStart(2, '0')}:00 · ${value === null ? dash : format(value)} · ${row.steps} ${t('chart.steps')}`,
               })
             }),
           ),
@@ -901,7 +901,7 @@ window.__ModuleLoader__.load({
     // Report body: pure markup over one payload (renders in tests too).
     // ---------------------------------------------------------------------
     function ReportBody({
-      data, error, scanning, scanLabel, t, modelKey, onModelKey, cache,
+      data, error, scanning, scanLabel, t, modelKey, cache,
       hiddenModels, filterOpen, onToggleModel, onToggleFilter, onShowAll, onHideAll,
     }) {
       const models = data?.models ?? []
@@ -909,6 +909,11 @@ window.__ModuleLoader__.load({
       const visibleModels = useMemo(() => models.filter(row => !hidden.has(row.key)), [models, hidden])
       // A hidden model cannot stay selected in the chart.
       const effectiveModelKey = visibleModels.some(row => row.key === modelKey) ? modelKey : ''
+      // One selector drives every block: cards, hourly charts and the table.
+      const selectedModel = effectiveModelKey === ''
+        ? null
+        : (visibleModels.find(row => row.key === effectiveModelKey) ?? null)
+      const tableModels = selectedModel === null ? visibleModels : [selectedModel]
 
       const hours = useMemo(() => {
         if (data === null) return []
@@ -918,6 +923,14 @@ window.__ModuleLoader__.load({
       }, [data, effectiveModelKey])
 
       const totals = data?.totals ?? {}
+      const cards = selectedModel === null ? totals : {
+        sessions: selectedModel.sessions,
+        steps: selectedModel.steps,
+        ttftAvg: selectedModel.ttftAvg,
+        speedAvg: selectedModel.speedAvg,
+        cacheHit: selectedModel.cacheHit,
+        tokensTotal: selectedModel.tokensTotal,
+      }
       const showEmpty = data !== null && models.length === 0 && !scanning
 
       return h(
@@ -933,12 +946,12 @@ window.__ModuleLoader__.load({
             h(
               'div',
               { className: 'dls-stats' },
-              h('div', { className: 'dls-stat' }, h('span', null, t('card.sessions')), h('b', null, fmtInt(totals.sessions))),
-              h('div', { className: 'dls-stat' }, h('span', null, t('card.steps')), h('b', null, fmtInt(totals.steps))),
-              h('div', { className: 'dls-stat' }, h('span', null, t('card.ttft')), h('b', null, fmtMs(totals.ttftAvg))),
-              h('div', { className: 'dls-stat' }, h('span', null, t('card.speed')), h('b', null, `${fmtSpeed(totals.speedAvg)} tok/s`)),
-              h('div', { className: 'dls-stat' }, h('span', null, t('card.cache')), h('b', null, fmtPercent(totals.cacheHit))),
-              h('div', { className: 'dls-stat' }, h('span', null, t('card.tokens')), h('b', null, fmtInt(totals.tokensTotal))),
+              h('div', { className: 'dls-stat' }, h('span', null, t('card.sessions')), h('b', null, fmtInt(cards.sessions))),
+              h('div', { className: 'dls-stat' }, h('span', null, t('card.steps')), h('b', null, fmtInt(cards.steps))),
+              h('div', { className: 'dls-stat' }, h('span', null, t('card.ttft')), h('b', null, fmtMs(cards.ttftAvg))),
+              h('div', { className: 'dls-stat' }, h('span', null, t('card.speed')), h('b', null, `${fmtSpeed(cards.speedAvg)} tok/s`)),
+              h('div', { className: 'dls-stat' }, h('span', null, t('card.cache')), h('b', null, fmtPercent(cards.cacheHit))),
+              h('div', { className: 'dls-stat' }, h('span', null, t('card.tokens')), h('b', null, fmtInt(cards.tokensTotal))),
             ),
             h(
               'div',
@@ -947,32 +960,20 @@ window.__ModuleLoader__.load({
                 'div',
                 { className: 'dls-section-head' },
                 h('h4', null, t('section.hours')),
-                h(
-                  'div',
-                  { className: 'dls-row', style: { marginLeft: 'auto' } },
-                  h('span', { className: 'dls-muted' }, t('chart.model')),
-                  h(
-                    'select',
-                    {
-                      className: 'dls-select',
-                      value: effectiveModelKey,
-                      onChange: event => onModelKey(event.target.value),
-                      'aria-label': t('chart.model'),
-                    },
-                    h('option', { value: '' }, t('chart.all')),
-                    visibleModels.map(row => h('option', { key: row.key, value: row.key }, `${row.key} (${row.steps})`)),
-                  ),
-                ),
+                selectedModel === null
+                  ? null
+                  : h('span', { className: 'dls-muted' }, selectedModel.key),
+                h('span', { className: 'dls-muted', style: { marginLeft: 'auto' } }, t('chart.axis')),
               ),
               h(
                 'div',
                 { className: 'dls-charts' },
                 h('div', { className: 'dls-chart' },
                   h('h5', null, t('chart.ttft')),
-                  h(HourBars, { rows: hours, field: 'ttftMs', kind: 'ttft', t, unit: ' ms', format: fmtMs })),
+                  h(HourBars, { rows: hours, field: 'ttftMs', kind: 'ttft', t, format: fmtMs })),
                 h('div', { className: 'dls-chart' },
                   h('h5', null, t('chart.speed')),
-                  h(HourBars, { rows: hours, field: 'speed', kind: 'speed', t, unit: ' tok/s', format: fmtSpeed })),
+                  h(HourBars, { rows: hours, field: 'speed', kind: 'speed', t, format: fmtSpeed })),
               ),
             ),
             h(
@@ -1025,7 +1026,7 @@ window.__ModuleLoader__.load({
                       h('th', { className: 'num' }, t('table.tokens')),
                       h('th', { className: 'num' }, t('table.total')),
                     )),
-                    h('tbody', null, visibleModels.map(row => h('tr', { key: row.key },
+                    h('tbody', null, tableModels.map(row => h('tr', { key: row.key },
                       h('td', null, h('span', { className: 'dls-swatch' }), row.key),
                       h('td', { className: 'num' }, fmtInt(row.steps)),
                       h('td', { className: 'num' }, `${fmtMs(row.ttftAvg)} / ${fmtMs(row.ttftP50)} / ${fmtMs(row.ttftP90)}`),
@@ -1166,6 +1167,11 @@ window.__ModuleLoader__.load({
 
       const refresh = useCallback(() => { requestRescan() }, [])
       const pickerRows = useMemo(() => mergePickerRows(data?.sessions, summaries), [data, summaries])
+      // The header selector is the one global filter: cards, charts and the
+      // table all render this model. A hidden or vanished model falls back to
+      // "all models" instead of leaving a stale selection.
+      const models = data?.models ?? []
+      const headerModelKey = models.some(row => row.key === modelKey && !hiddenModels.has(row.key)) ? modelKey : ''
       const toggleModel = useCallback(key => {
         setHiddenModels(current => {
           const next = new Set(current)
@@ -1226,6 +1232,19 @@ window.__ModuleLoader__.load({
               h(
                 'div',
                 { className: 'dls-head-actions' },
+                data !== null && models.length > 0
+                  ? h('select', {
+                    className: 'dls-select',
+                    value: headerModelKey,
+                    onChange: event => setModelKey(event.target.value),
+                    'aria-label': t('chart.model'),
+                    title: t('chart.model'),
+                  },
+                  h('option', { value: '' }, t('chart.all')),
+                  models
+                    .filter(row => !hiddenModels.has(row.key))
+                    .map(row => h('option', { key: row.key, value: row.key }, `${row.key} (${row.steps})`)))
+                  : null,
                 h(ScopeSwitch, { uiState, t }),
                 h('button', { type: 'button', className: 'dls-btn', onClick: refresh, disabled: scanning }, t('action.refresh')),
                 h('button', { type: 'button', className: 'dls-btn', onClick: closePanel, 'aria-label': t('action.close') }, '✕'),
@@ -1240,8 +1259,7 @@ window.__ModuleLoader__.load({
                 scanning,
                 scanLabel,
                 t,
-                modelKey,
-                onModelKey: setModelKey,
+                modelKey: headerModelKey,
                 hiddenModels,
                 filterOpen,
                 onToggleModel: toggleModel,

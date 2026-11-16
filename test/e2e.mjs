@@ -343,8 +343,13 @@ const checks = [
     && markupFiltered.includes('全不显示') && markupFiltered.includes('全部显示')
     && (markupReport.match(/class="dls-swatch"/g) ?? []).length === report.models.length],
   ['hidden-everything state renders', markupAllHidden.includes('所有模型都已隐藏')],
-  ['model filter switches the chart', markupPerModel.includes('selected') && markupPerModel !== markupReport
+  ['model filter switches the chart', markupPerModel !== markupReport
     && (markupPerModel.match(/dls-bar/g) ?? []).length >= 48],
+  ['model selection drives cards, chart and table',
+    (markupPerModel.match(/class="dls-swatch"/g) ?? []).length === 1
+    && markupPerModel.includes(report.models[0].steps.toLocaleString('en-US'))
+    && markupPerModel.includes(report.models[0].key)],
+  ['bar tooltips carry a single unit', !/\d\s?ms\s?ms/.test(markupReport) && !/\d(\.\d+)?\s?s\s?ms/.test(markupReport)],
   ['recent table lists responses', (markupReport.match(/class="dls-table"/g) ?? []).length === 2
     && markupReport.includes(report.recent[0].model) && markupReport.includes('最近响应')],
   ['cache line renders points', markupCache.includes('<path') && markupCache.includes('dls-line-plot')
